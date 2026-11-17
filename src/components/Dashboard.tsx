@@ -11,7 +11,7 @@ import MonthlyBarChart from "@/components/charts/MonthlyBarChart";
 import Sparkline from "@/components/charts/Sparkline";
 import { useBudgetStore } from "@/store/useBudgetStore";
 import { useHydrated } from "@/hooks/useHydrated";
-import { CATEGORIES } from "@/lib/categories";
+import { getCategoryMeta } from "@/lib/categories";
 import { getCategoryBreakdown, getDailySeries, getMonthlySeries, getSummary } from "@/lib/stats";
 import { formatCurrency, formatShortDate } from "@/lib/format";
 
@@ -252,7 +252,7 @@ function DashboardContent() {
       <Panel title="Son işlemler" subtitle="En yeni 7 kayıt" delay={0.4} className="lg:col-span-4 lg:row-span-2">
         <ul className="flex min-h-0 flex-1 flex-col justify-between gap-1 overflow-hidden">
           {recent.map((t) => {
-            const meta = CATEGORIES[t.category];
+            const meta = getCategoryMeta(t.category);
             const Icon = meta.icon;
             const isIncome = t.type === "income";
             return (

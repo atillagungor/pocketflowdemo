@@ -1,6 +1,11 @@
 import type { Category, Transaction } from "@/types/finance";
-import { CATEGORIES } from "@/lib/categories";
-import { formatMonthShort, formatShortDate, toISODate, toMonthKey } from "@/lib/format";
+import { getCategoryMeta } from "@/lib/categories";
+import {
+  formatMonthShort,
+  formatShortDate,
+  toISODate,
+  toMonthKey,
+} from "@/lib/format";
 
 /** Returns the ISO date (YYYY-MM-DD) for `days` days before today. */
 const daysAgo = (days: number): string => {
@@ -9,7 +14,8 @@ const daysAgo = (days: number): string => {
   return toISODate(date);
 };
 
-const signedAmount = (t: Transaction): number => (t.type === "income" ? t.amount : -t.amount);
+const signedAmount = (t: Transaction): number =>
+  t.type === "income" ? t.amount : -t.amount;
 
 export interface Summary {
   balance: number;
@@ -53,10 +59,13 @@ export interface DailyPoint {
 }
 
 /** Income, expense and running balance for each of the last `days` days. */
-export function getDailySeries(transactions: Transaction[], days = 60): DailyPoint[] {
+export function getDailySeries(
+  transactions: Transaction[],
+  days = 60,
+): DailyPoint[] {
   const dates = Array.from({ length: days }, (_, i) => daysAgo(days - 1 - i));
   const byDate = new Map<string, { income: number; expense: number }>(
-    dates.map((d) => [d, { income: 0, expense: 0 }])
+    dates.map((d) => [d, { income: 0, expense: 0 }]),
   );
   const firstDate = dates[0];
   let running = 0;
@@ -86,13 +95,18 @@ export interface MonthlyPoint {
 }
 
 /** Income and expense totals per month for the last `months` months. */
-export function getMonthlySeries(transactions: Transaction[], months = 6): MonthlyPoint[] {
+export function getMonthlySeries(
+  transactions: Transaction[],
+  months = 6,
+): MonthlyPoint[] {
   const now = new Date();
   const keys = Array.from({ length: months }, (_, i) =>
-    toMonthKey(new Date(now.getFullYear(), now.getMonth() - (months - 1 - i), 1))
+    toMonthKey(
+      new Date(now.getFullYear(), now.getMonth() - (months - 1 - i), 1),
+    ),
   );
   const totals = new Map<string, { income: number; expense: number }>(
-    keys.map((key) => [key, { income: 0, expense: 0 }])
+    keys.map((key) => [key, { income: 0, expense: 0 }]),
   );
 
   for (const t of transactions) {
@@ -102,7 +116,10 @@ export function getMonthlySeries(transactions: Transaction[], months = 6): Month
     else bucket.expense += t.amount;
   }
 
-  return keys.map((key) => ({ label: formatMonthShort(key), ...totals.get(key)! }));
+  return keys.map((key) => ({
+    label: formatMonthShort(key),
+    ...totals.get(key)!,
+  }));
 }
 
 export interface CategorySlice {
@@ -113,7 +130,10 @@ export interface CategorySlice {
 }
 
 /** Expense totals per category for the last `days` days, largest first. */
-export function getCategoryBreakdown(transactions: Transaction[], days = 30): CategorySlice[] {
+export function getCategoryBreakdown(
+  transactions: Transaction[],
+  days = 30,
+): CategorySlice[] {
   const from = daysAgo(days);
   const totals = new Map<Category, number>();
 
@@ -124,11 +144,9 @@ export function getCategoryBreakdown(transactions: Transaction[], days = 30): Ca
   }
 
   return [...totals.entries()]
-    .map(([category, value]) => ({
-      category,
-      label: CATEGORIES[category].label,
-      color: CATEGORIES[category].color,
-      value,
-    }))
+    .map(([category, value]) => {
+      const meta = getCategoryMeta(category);
+      return { category, label: meta.label, color: meta.color, value };
+    })
     .sort((a, b) => b.value - a.value);
 }

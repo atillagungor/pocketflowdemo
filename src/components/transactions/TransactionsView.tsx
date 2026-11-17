@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowDown,
@@ -8,18 +8,21 @@ import {
   ArrowUpDown,
   ChevronDown,
   ListChecks,
+  Plus,
   Search,
   SearchX,
+  SlidersHorizontal,
   Trash2,
   TrendingDown,
   TrendingUp,
   Wallet,
-  SlidersHorizontal,
 } from "lucide-react";
-import { CATEGORIES } from "@/lib/categories";
-import type { CategoryMeta } from "@/lib/categories";
+import { useMounted } from "@/hooks/useMounted";
+import { getCategoryMeta, listCategories } from "@/lib/categories";
 import { useBudgetStore } from "@/store/useBudgetStore";
+import { useCategoryStore } from "@/store/useCategoryStore";
 import type { Category, Transaction, TransactionType } from "@/types/finance";
+import AddTransactionModal from "./AddTransactionModal";
 
 type TypeFilter = "all" | TransactionType;
 type SortKey = "date" | "amount";
@@ -32,14 +35,13 @@ const TYPE_OPTIONS: { value: TypeFilter; label: string }[] = [
   { value: "expense", label: "Gider" },
 ];
 
-const DATE_PRESETS: { value: Exclude<DatePreset, "custom">; label: string }[] =
-  [
-    { value: "all", label: "Tüm zamanlar" },
-    { value: "month", label: "Bu ay" },
-    { value: "30d", label: "Son 30 gün" },
-    { value: "90d", label: "Son 3 ay" },
-    { value: "year", label: "Bu yıl" },
-  ];
+const DATE_PRESETS: { value: Exclude<DatePreset, "custom">; label: string }[] = [
+  { value: "all", label: "Tüm zamanlar" },
+  { value: "month", label: "Bu ay" },
+  { value: "30d", label: "Son 30 gün" },
+  { value: "90d", label: "Son 3 ay" },
+  { value: "year", label: "Bu yıl" },
+];
 
 const moneyFormatter = new Intl.NumberFormat("tr-TR", {
   style: "currency",
@@ -86,15 +88,6 @@ function getPresetStart(preset: Exclude<DatePreset, "custom">) {
   }
 }
 
-// Hydration gate: false on the server and on the first client render
-function useMounted() {
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-}
-
 const inputClass =
   "h-9 rounded-xl border border-border bg-background/60 px-3 text-sm outline-none transition-colors placeholder:text-muted focus:border-accent/60 [color-scheme:dark]";
 
@@ -104,6 +97,7 @@ export default function TransactionsView() {
   const seeded = useBudgetStore((s) => s.seeded);
   const seedDummyData = useBudgetStore((s) => s.seedDummyData);
   const removeTransaction = useBudgetStore((s) => s.removeTransaction);
+  const customCategories = useCategoryStore((s) => s.custom);
 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -116,6 +110,7 @@ export default function TransactionsView() {
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   // Load demo data once when the user lands here first
   useEffect(() => {
@@ -129,25 +124,23 @@ export default function TransactionsView() {
 
     const filtered = transactions.filter((t) => {
       if (typeFilter !== "all" && t.type !== typeFilter) return false;
-      if (categoryFilter !== "all" && t.category !== categoryFilter)
-        return false;
+      if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
       if (dateFrom && t.date < dateFrom) return false;
       if (dateTo && t.date > dateTo) return false;
       if (min !== null && !Number.isNaN(min) && t.amount < min) return false;
       if (max !== null && !Number.isNaN(max) && t.amount > max) return false;
       if (!q) return true;
-      const haystack =
-        `${t.note} ${CATEGORIES[t.category].label}`.toLocaleLowerCase("tr-TR");
+      const haystack = `${t.note} ${getCategoryMeta(t.category).label}`.toLocaleLowerCase("tr-TR");
       return haystack.includes(q);
     });
 
     return filtered.sort((a, b) => {
-      const diff =
-        sortKey === "date" ? a.date.localeCompare(b.date) : a.amount - b.amount;
+      const diff = sortKey === "date" ? a.date.localeCompare(b.date) : a.amount - b.amount;
       return sortDir === "asc" ? diff : -diff;
     });
   }, [
     transactions,
+    customCategories,
     query,
     typeFilter,
     categoryFilter,
@@ -219,24 +212,9 @@ export default function TransactionsView() {
     <main className="flex min-h-0 flex-1 flex-col gap-4 p-5 lg:h-[calc(100dvh-4rem)] lg:flex-none lg:p-6">
       {/* Summary tiles (react to the active filters) */}
       <section className="grid shrink-0 grid-cols-2 gap-4 xl:grid-cols-4">
-        <StatTile
-          label="İşlem sayısı"
-          value={String(rows.length)}
-          icon={ListChecks}
-          tone="neutral"
-        />
-        <StatTile
-          label="Toplam gelir"
-          value={moneyFormatter.format(totals.income)}
-          icon={TrendingUp}
-          tone="income"
-        />
-        <StatTile
-          label="Toplam gider"
-          value={moneyFormatter.format(totals.expense)}
-          icon={TrendingDown}
-          tone="expense"
-        />
+        <StatTile label="İşlem sayısı" value={String(rows.length)} icon={ListChecks} tone="neutral" />
+        <StatTile label="Toplam gelir" value={moneyFormatter.format(totals.income)} icon={TrendingUp} tone="income" />
+        <StatTile label="Toplam gider" value={moneyFormatter.format(totals.expense)} icon={TrendingDown} tone="expense" />
         <StatTile
           label="Net"
           value={moneyFormatter.format(totals.net)}
@@ -248,15 +226,11 @@ export default function TransactionsView() {
       {/* Table card: fixed height, only the table body scrolls */}
       <section className="flex h-[75dvh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-border bg-card/60 lg:h-auto lg:flex-1 lg:shrink">
         {/* Toolbar */}
-        {/* Toolbar */}
         <div className="flex shrink-0 flex-col gap-3 border-b border-border p-4 md:flex-row md:flex-wrap md:items-center">
-          {/* Search + mobile filter toggle */}
+          {/* Search, mobile filter toggle and add button */}
           <div className="flex gap-2 md:contents">
             <label className="relative min-w-0 flex-1 md:w-64 md:flex-none">
-              <Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-              />
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -264,6 +238,7 @@ export default function TransactionsView() {
                 className={`${inputClass} w-full pl-9`}
               />
             </label>
+
             <button
               type="button"
               onClick={() => setFiltersOpen((o) => !o)}
@@ -282,12 +257,21 @@ export default function TransactionsView() {
                 </span>
               )}
             </button>
+
+            {/* Icon only on mobile, pinned to the far right of the toolbar on md+ */}
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              aria-label="Yeni işlem ekle"
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-accent px-3 text-sm font-semibold text-black transition-opacity hover:opacity-90 md:order-last md:ml-auto"
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              <span className="hidden md:inline">Yeni işlem</span>
+            </button>
           </div>
 
           {/* Filter panel: collapsible on mobile, inline on md+ */}
-          <div
-            className={`${filtersOpen ? "flex flex-col gap-3" : "hidden"} md:contents`}
-          >
+          <div className={`${filtersOpen ? "flex flex-col gap-3" : "hidden"} md:contents`}>
             <div className="grid grid-cols-3 rounded-xl border border-border bg-background/60 p-1 md:inline-flex">
               {TYPE_OPTIONS.map((opt) => (
                 <button
@@ -295,9 +279,7 @@ export default function TransactionsView() {
                   type="button"
                   onClick={() => setTypeFilter(opt.value)}
                   className={`rounded-lg px-3 py-1 text-center text-sm transition-colors ${
-                    typeFilter === opt.value
-                      ? "bg-accent/15 font-medium text-accent"
-                      : "text-muted hover:text-foreground"
+                    typeFilter === opt.value ? "bg-accent/15 font-medium text-accent" : "text-muted hover:text-foreground"
                   }`}
                 >
                   {opt.label}
@@ -308,24 +290,17 @@ export default function TransactionsView() {
             <label className="relative">
               <select
                 value={categoryFilter}
-                onChange={(e) =>
-                  setCategoryFilter(e.target.value as Category | "all")
-                }
+                onChange={(e) => setCategoryFilter(e.target.value as Category | "all")}
                 className={`${inputClass} w-full appearance-none pr-9 md:w-auto`}
               >
                 <option value="all">Tüm kategoriler</option>
-                {(Object.entries(CATEGORIES) as [Category, CategoryMeta][]).map(
-                  ([key, meta]) => (
-                    <option key={key} value={key}>
-                      {meta.label}
-                    </option>
-                  ),
-                )}
+                {listCategories(customCategories).map(([key, meta]) => (
+                  <option key={key} value={key}>
+                    {meta.label}
+                  </option>
+                ))}
               </select>
-              <ChevronDown
-                size={16}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted"
-              />
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
             </label>
 
             <div className="flex flex-wrap gap-1.5">
@@ -399,32 +374,26 @@ export default function TransactionsView() {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="self-start text-sm text-muted underline-offset-4 hover:text-foreground hover:underline md:ml-auto"
+                className="self-start text-sm text-muted underline-offset-4 hover:text-foreground hover:underline"
               >
                 Filtreleri temizle
               </button>
             )}
           </div>
         </div>
+
         {/* Scrollable table body */}
         <div className="min-h-0 flex-1 overflow-auto">
           {rows.length === 0 ? (
             <EmptyState filtered={hasActiveFilter} onReset={resetFilters} />
           ) : (
-            <table className="w-full md:min-w-[720px] border-collapse text-sm">
+            <table className="w-full border-collapse text-sm md:min-w-[720px]">
               <thead className="sticky top-0 z-10 bg-card text-xs uppercase tracking-wide text-muted">
                 <tr className="border-b border-border">
-                  <SortableTh
-                    label="Tarih"
-                    active={sortKey === "date"}
-                    dir={sortDir}
-                    onClick={() => toggleSort("date")}
-                  />
+                  <SortableTh label="Tarih" active={sortKey === "date"} dir={sortDir} onClick={() => toggleSort("date")} />
                   <th className="px-4 py-3 text-left font-medium">Açıklama</th>
                   <th className="px-4 py-3 text-left font-medium">Kategori</th>
-                  <th className="hidden px-4 py-3 text-left font-medium md:table-cell">
-                    Tür
-                  </th>
+                  <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Tür</th>
                   <SortableTh
                     label="Tutar"
                     align="right"
@@ -437,11 +406,7 @@ export default function TransactionsView() {
               </thead>
               <tbody>
                 {rows.map((t) => (
-                  <Row
-                    key={t.id}
-                    transaction={t}
-                    onRemove={() => removeTransaction(t.id)}
-                  />
+                  <Row key={t.id} transaction={t} onRemove={() => removeTransaction(t.id)} />
                 ))}
               </tbody>
             </table>
@@ -453,6 +418,8 @@ export default function TransactionsView() {
           {rows.length} / {transactions.length} işlem gösteriliyor
         </div>
       </section>
+
+      <AddTransactionModal open={addOpen} onClose={() => setAddOpen(false)} />
     </main>
   );
 }
@@ -478,16 +445,12 @@ function StatTile({
 
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-border bg-card/60 p-4">
-      <span
-        className={`grid size-11 shrink-0 place-items-center rounded-xl ${toneClasses}`}
-      >
+      <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${toneClasses}`}>
         <Icon size={20} />
       </span>
       <div className="min-w-0">
         <p className="text-xs text-muted">{label}</p>
-        <p className="truncate text-lg font-semibold tracking-tight tabular-nums">
-          {value}
-        </p>
+        <p className="truncate text-lg font-semibold tracking-tight tabular-nums">{value}</p>
       </div>
     </div>
   );
@@ -525,7 +488,7 @@ function SortableTh({
 }
 
 function Row({ transaction: t, onRemove }: { transaction: Transaction; onRemove: () => void }) {
-  const meta = CATEGORIES[t.category];
+  const meta = getCategoryMeta(t.category);
   const CategoryIcon = meta.icon;
   const isIncome = t.type === "income";
 
@@ -554,7 +517,9 @@ function Row({ transaction: t, onRemove }: { transaction: Transaction; onRemove:
           {isIncome ? "Gelir" : "Gider"}
         </span>
       </td>
-      <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${isIncome ? "text-accent" : "text-danger"}`}>
+      <td
+        className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${isIncome ? "text-accent" : "text-danger"}`}
+      >
         {isIncome ? "+" : "−"}
         {moneyFormatter.format(t.amount)}
       </td>
@@ -572,26 +537,16 @@ function Row({ transaction: t, onRemove }: { transaction: Transaction; onRemove:
   );
 }
 
-function EmptyState({
-  filtered,
-  onReset,
-}: {
-  filtered: boolean;
-  onReset: () => void;
-}) {
+function EmptyState({ filtered, onReset }: { filtered: boolean; onReset: () => void }) {
   return (
     <div className="grid h-full min-h-60 place-items-center p-8 text-center">
       <div>
         <span className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-white/5 text-muted">
           <SearchX size={22} />
         </span>
-        <p className="font-medium">
-          {filtered ? "Sonuç bulunamadı" : "Henüz işlem yok"}
-        </p>
+        <p className="font-medium">{filtered ? "Sonuç bulunamadı" : "Henüz işlem yok"}</p>
         <p className="mt-1 text-sm text-muted">
-          {filtered
-            ? "Aramayı veya filtreleri değiştirmeyi dene."
-            : "İlk işlemini ekleyince burada görünecek."}
+          {filtered ? "Aramayı veya filtreleri değiştirmeyi dene." : "İlk işlemini ekleyince burada görünecek."}
         </p>
         {filtered && (
           <button

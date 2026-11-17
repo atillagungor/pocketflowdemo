@@ -1,6 +1,6 @@
 export type TransactionType = "income" | "expense";
 
-export type Category =
+export type BuiltInCategory =
   | "salary"
   | "freelance"
   | "food"
@@ -11,6 +11,17 @@ export type Category =
   | "health"
   | "shopping"
   | "other";
+
+/** Built-in keys plus ids of user-defined categories. */
+export type Category = BuiltInCategory | (string & {});
+
+export interface CustomCategory {
+  id: string;
+  label: string;
+  color: string;
+  /** Which kind of transaction the category is offered for. */
+  type: TransactionType;
+}
 
 export interface Transaction {
   id: string;
