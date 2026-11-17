@@ -1,14 +1,16 @@
-import { BarChart3, CreditCard, Database, LayoutDashboard, PiggyBank, Settings, Waves } from "lucide-react";
+"use client";
 
-const ITEMS = [
-  { label: "Genel bakış", icon: LayoutDashboard, active: true },
-  { label: "İşlemler", icon: CreditCard, active: false },
-  { label: "Bütçeler", icon: PiggyBank, active: false },
-  { label: "Raporlar", icon: BarChart3, active: false },
-  { label: "Ayarlar", icon: Settings, active: false },
-];
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Database, Waves } from "lucide-react";
+import { NAV_ITEMS } from "./nav-items";
 
 export default function Sidebar() {
+  const pathname = usePathname();
+
+  // "/" must match exactly, other routes match by prefix
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border bg-card/40 p-4 lg:flex">
       <div className="flex items-center gap-3 px-2 py-2">
@@ -19,21 +21,39 @@ export default function Sidebar() {
       </div>
 
       <nav className="mt-8 flex flex-1 flex-col gap-1">
-        {ITEMS.map(({ label, icon: Icon, active }) => (
-          <div
-            key={label}
-            aria-disabled={!active}
-            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${
-              active ? "bg-accent/10 font-medium text-accent" : "cursor-not-allowed text-muted/60"
-            }`}
-          >
-            <Icon size={18} />
-            <span className="flex-1">{label}</span>
-            {!active && (
-              <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted">Yakında</span>
-            )}
-          </div>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
+          const href = "href" in item ? item.href : undefined;
+
+          if (!href) {
+            return (
+              <div
+                key={item.label}
+                aria-disabled
+                className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted/60"
+              >
+                <Icon size={18} />
+                <span className="flex-1">{item.label}</span>
+                <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted">Yakında</span>
+              </div>
+            );
+          }
+
+          const active = isActive(href);
+          return (
+            <Link
+              key={item.label}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
+                active ? "bg-accent/10 font-medium text-accent" : "text-muted hover:bg-white/5 hover:text-foreground"
+              }`}
+            >
+              <Icon size={18} />
+              <span className="flex-1">{item.label}</span>
+            </Link>
+          );
+        })}
       </nav>
 
       <div className="rounded-2xl border border-border bg-background/60 p-4">
